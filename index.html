@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>태양계 수박게임 : 우주 병합</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js 물리 엔진 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- Google Fonts & FontAwesome Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+KR:wght@300;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: radial-gradient(circle at center, #0d0d21 0%, #050510 100%);
+            touch-action: none; /* 모바일 드래그 시 브라우저 스크롤 방지 */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        /* 우주 느낌의 빛나는 텍스트 */
+        .neon-text {
+            text-shadow: 0 0 8px rgba(147, 51, 234, 0.6), 0 0 20px rgba(147, 51, 234, 0.4);
+        }
+        /* 모달 오버레이 */
+        .modal-bg {
+            background-color: rgba(5, 5, 15, 0.85);
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="overflow-hidden h-screen w-screen flex flex-col items-center justify-between py-4 text-white">
+
+    <!-- 상단 헤더 & 점수판 -->
+    <header class="w-full max-w-md px-4 flex justify-between items-center z-10">
+        <div>
+            <h1 class="text-xl font-black font-orbitron tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-yellow-500">
+                COSMIC MERGE
+            </h1>
+            <p class="text-xs text-gray-400">태양계 수박게임</p>
+        </div>
+        <div class="flex gap-2">
+            <!-- 사운드 토글 -->
+            <button id="sound-btn" class="w-10 h-10 bg-slate-800/80 border border-slate-700 rounded-full flex items-center justify-center text-purple-400 hover:bg-slate-700 transition">
+                <i class="fas fa-volume-up"></i>
+            </button>
+            <!-- 게임 규칙 / 도감 보기 -->
+            <button id="guide-btn" class="w-10 h-10 bg-slate-800/80 border border-slate-700 rounded-full flex items-center justify-center text-purple-400 hover:bg-slate-700 transition">
+                <i class="fas fa-info-circle"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 실시간 점수 대시보드 -->
+    <div class="w-full max-w-md px-4 flex justify-between items-end my-2 z-10">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 flex-1 mr-3 flex flex-col justify-center">
+            <span class="text-xs text-purple-300 font-bold uppercase tracking-widest">Score</span>
+            <span id="score" class="text-2xl font-black font-orbitron text-yellow-400">0</span>
+        </div>
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 flex-1 mr-3 flex flex-col justify-center">
+            <span class="text-xs text-blue-300 font-bold uppercase tracking-widest">Best</span>
+            <span id="high-score" class="text-2xl font-black font-orbitron text-blue-400">0</span>
+        </div>
+        <!-- 다음 행성 미리보기 -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-1 flex items-center gap-2">
+            <div class="flex flex-col">
+                <span class="text-[10px] text-gray-400 font-bold uppercase">Next</span>
+                <span id="next-name" class="text-xs font-bold text-gray-200">지구</span>
+            </div>
+            <div class="w-10 h-10 flex items-center justify-center bg-slate-950/80 rounded-xl border border-slate-800">
+                <canvas id="next-canvas" width="36" height="36" class="w-9 h-9"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 플레이 캔버스 컨테이너 -->
+    <main class="relative flex-1 w-full max-w-md flex items-center justify-center px-4">
+        <div id="game-container" class="relative w-full aspect-[2/3] max-h-[75vh] bg-slate-950/70 border-2 border-slate-800 rounded-3xl overflow-hidden shadow-2xl shadow-purple-950/20">
+            <!-- 메인 게임 캔버스 -->
+            <canvas id="game-canvas" class="absolute top-0 left-0 w-full h-full cursor-pointer"></canvas>
+            
+            <!-- 조작 가이드 오버레이 (최초 실행용) -->
+            <div id="tap-guide" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/40 pointer-events-none transition-opacity duration-500">
+                <div class="text-center p-6 bg-slate-900/90 border border-slate-800 rounded-2xl max-w-xs shadow-xl">
+                    <i class="fas fa-hand-pointer text-3xl text-purple-400 animate-bounce mb-3"></i>
+                    <p class="font-bold text-sm">드래그하여 조준하고,</p>
+                    <p class="font-bold text-sm mt-1">손을 떼거나 터치해서 행성을 떨어뜨리세요!</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 하단 상태 메시지 -->
+    <footer class="w-full max-w-md text-center py-2 z-10 text-xs text-gray-500">
+        최종 진화지인 <span class="text-yellow-400 font-bold">태양 ☀️</span>을 향해 천체를 융합해 보세요!
+    </footer>
+
+    <!-- START / GAME OVER / CLEAR MODALS -->
+    <!-- 1. 시작 및 도감 모달 -->
+    <div id="start-modal" class="fixed inset-0 z-50 modal-bg flex items-center justify-center p-6">
+        <div class="bg-slate-900 border-2 border-purple-900 rounded-3xl w-full max-w-md p-6 flex flex-col gap-5 max-h-[85vh] overflow-y-auto">
+            <div class="text-center">
+                <h2 class="text-3xl font-black font-orbitron text-purple-400 tracking-wider">COSMIC MERGE</h2>
+                <p class="text-sm text-gray-400 mt-1">중력과 천체 크기를 활용한 우주 융합 게임</p>
+            </div>
+
+            <!-- 천체 도감 / 계통도 -->
+            <div>
+                <h3 class="text-xs font-bold uppercase tracking-widest text-purple-300 mb-3 text-center">천체 진화 계통도</h3>
+                <div class="grid grid-cols-4 gap-2 text-[10px] text-center" id="hierarchy-grid">
+                    <!-- JS로 채워짐 -->
+                </div>
+            </div>
+
+            <!-- 게임 특징 설명 -->
+            <div class="bg-slate-950/60 p-4 rounded-xl text-xs space-y-2 text-gray-300 leading-relaxed">
+                <p><i class="fas fa-dot-circle text-purple-400 mr-1"></i> 떨어지는 천체가 가이드 라인(<span class="text-red-400">빨간 점선</span>) 위로 가득 차서 3초 이상 버티지 못하면 게임 오버됩니다.</p>
+                <p><i class="fas fa-dot-circle text-purple-400 mr-1"></i> 토성은 커다란 고리를 가지고 있어 예상치 못한 방향으로 굴러갈 수 있으니 주의하세요!</p>
+            </div>
+
+            <button id="play-btn" class="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black rounded-2xl tracking-widest text-lg shadow-lg hover:shadow-purple-500/20 active:scale-95 transition">
+                우주 비행 시작하기 <i class="fas fa-rocket ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. 게임오버 모달 -->
+    <div id="gameover-modal" class="fixed inset-0 z-50 modal-bg flex items-center justify-center p-6 hidden">
+        <div class="bg-slate-900 border-2 border-red-900 rounded-3xl w-full max-w-xs p-6 flex flex-col items-center gap-5">
+            <div class="w-16 h-16 bg-red-950/50 border border-red-800 rounded-full flex items-center justify-center text-red-500 text-3xl">
+                <i class="fas fa-skull-crossbones"></i>
+            </div>
+            <div class="text-center">
+                <h2 class="text-2xl font-black font-orbitron text-red-500">MISSION FAILED</h2>
+                <p class="text-xs text-gray-400 mt-1">우주 공간에 천체가 포화되어 붕괴되었습니다.</p>
+            </div>
+            <div class="w-full bg-slate-950/60 p-4 rounded-2xl text-center space-y-1">
+                <span class="text-xs text-gray-400 block font-bold uppercase tracking-widest">Final Score</span>
+                <span id="final-score" class="text-3xl font-black font-orbitron text-yellow-400">0</span>
+            </div>
+            <button id="restart-btn" class="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl tracking-wider active:scale-95 transition">
+                다시 탐사 시작하기 <i class="fas fa-redo ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. 태양 합성 성공 (게임 클리어!) 모달 -->
+    <div id="clear-modal" class="fixed inset-0 z-50 modal-bg flex items-center justify-center p-6 hidden">
+        <div class="bg-slate-900 border-2 border-yellow-500 rounded-3xl w-full max-w-xs p-6 flex flex-col items-center gap-5">
+            <div class="w-16 h-16 bg-yellow-500/20 border border-yellow-400 rounded-full flex items-center justify-center text-yellow-400 text-3xl animate-pulse">
+                <i class="fas fa-sun"></i>
+            </div>
+            <div class="text-center">
+                <h2 class="text-2xl font-black font-orbitron text-yellow-400 neon-text">SUN IS BORN!</h2>
+                <p class="text-xs text-gray-300 mt-1">축하합니다! 핵융합을 통해 마침내 새로운 항성 '태양'을 탄생시켰습니다!</p>
+            </div>
+            <div class="w-full bg-slate-950/60 p-4 rounded-2xl text-center space-y-1">
+                <span class="text-xs text-gray-400 block font-bold uppercase tracking-widest">Current Score</span>
+                <span id="clear-score" class="text-3xl font-black font-orbitron text-yellow-400">0</span>
+            </div>
+            <div class="flex gap-2 w-full">
+                <button id="continue-btn" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">
+                    계속 플레이
+                </button>
+                <button id="clear-restart-btn" class="flex-1 py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold rounded-xl text-xs transition">
+                    새 게임 시작
+                </button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ==========================================
+// 1. SOUND SYSTEM (WEB AUDIO API)
+// ==========================================
+class CosmicAudio {
+    constructor() {
+        this.ctx = null;
+        this.isMuted = localStorage.getItem('cosmic_mute') === 'true';
+        this.updateBtnUI();
+    }
+
+    init() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    playDrop() {
+        if (this.isMuted) return;
+        this.init();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.15);
+
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+    }
+
+    playMerge(tier) {
+        if (this.isMuted) return;
+        this.init();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'sine';
+        const startFreq = 220 + (tier * 40);
+        const endFreq = startFreq * 1.5;
+
+        osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + 0.25);
+
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.25);
+    }
+
+    playGameOver() {
+        if (this.isMuted) return;
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.linearRampToValueAtTime(80, now + 0.8);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.8);
+
+        osc.start();
+        osc.stop(now + 0.8);
+    }
+
+    toggle() {
+        this.isMuted = !this.isMuted;
+        localStorage.setItem('cosmic_mute', this.isMuted);
+        this.updateBtnUI();
+    }
+
+    updateBtnUI() {
+        const soundBtn = document.getElementById('sound-btn');
+        if (this.isMuted) {
+            soundBtn.innerHTML = '<i class="fas fa-volume-mute text-red-400"></i>';
+            soundBtn.classList.add('border-red-950/50');
+        } else {
+            soundBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+            soundBtn.classList.remove('border-red-950/50');
+        }
+    }
+}
+
+const audio = new CosmicAudio();
+document.getElementById('sound-btn').addEventListener('click', () => audio.toggle());
+
+// ==========================================
+// 2. PLANET DATA DEFINITIONS
+// ==========================================
+const PLANET_TIERS = [
+    { name: "세레스", desc: "왜소행성", radius: 11, color: "#878a8a", coreColor: "#565858", score: 4, stroke: "#a6aaaa" },
+    { name: "명왕성", desc: "얼음왜성", radius: 16, color: "#a5b8c4", coreColor: "#8398a6", score: 8, stroke: "#dbeaf5" },
+    { name: "수성", desc: "돌행성", radius: 22, color: "#545e6b", coreColor: "#39414c", score: 16, stroke: "#808d9e" },
+    { name: "화성", desc: "붉은 사막", radius: 29, color: "#db593d", coreColor: "#9c3823", score: 32, stroke: "#ff8c73" },
+    { name: "금성", desc: "황산 구름", radius: 37, color: "#e39d3b", coreColor: "#a36c20", score: 64, stroke: "#ffe39f" },
+    { name: "지구", desc: "우리의 고향", radius: 46, color: "#1c6da8", coreColor: "#114770", score: 128, stroke: "#5eb8ff" },
+    { name: "해왕성", desc: "푸른 거인", radius: 56, color: "#254c8c", coreColor: "#142d59", score: 256, stroke: "#66a1ff" },
+    { name: "천왕성", desc: "기울어진 얼음", radius: 67, color: "#74bcc2", coreColor: "#4f8c91", score: 512, stroke: "#b5f0f5" },
+    { name: "토성", desc: "아름다운 고리", radius: 79, color: "#e2bf7d", coreColor: "#9e8350", score: 1024, stroke: "#ffebc4", ring: true },
+    { name: "목성", desc: "대적점 가스", radius: 92, color: "#ca8954", coreColor: "#875730", score: 2048, stroke: "#ffd9ba" },
+    { name: "태양", desc: "핵융합 항성", radius: 108, color: "#e84315", coreColor: "#fbc02d", score: 4096, stroke: "#ffee55", glow: true }
+];
+
+// 도감 생성
+const hierarchyGrid = document.getElementById('hierarchy-grid');
+PLANET_TIERS.forEach((tier, index) => {
+    const card = document.createElement('div');
+    card.className = "bg-slate-950/80 p-2 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-1";
+    
+    const minicanvas = document.createElement('canvas');
+    minicanvas.width = 30;
+    minicanvas.height = 30;
+    const miniCtx = minicanvas.getContext('2d');
+    
+    miniCtx.save();
+    miniCtx.translate(15, 15);
+    drawPlanetVisual(miniCtx, 0, 0, 11, tier, 0);
+    miniCtx.restore();
+
+    card.appendChild(minicanvas);
+    card.innerHTML += `
+        <div class="font-bold text-white tracking-tighter truncate w-full">${tier.name}</div>
+        <div class="text-[8px] text-purple-400">Lv.${index+1}</div>
+    `;
+    hierarchyGrid.appendChild(card);
+});
+
+// ==========================================
+// 3. MATTER.JS PHYSICS & ENGINE SETUP
+// ==========================================
+const { Engine, World, Bodies, Composite, Events, Body, Vector, Runner } = Matter;
+
+const engine = Engine.create({
+    gravity: { y: 1.5 }
+});
+const world = engine.world;
+
+// Matter.js Runner 생성 (엔진을 백그라운드에서 매끄럽게 구동)
+const runner = Runner.create();
+Runner.run(runner, engine);
+
+// 캔버스 크기 제어
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+let width = 380; // 기본 크기 보장
+let height = 570;
+
+function resizeCanvas() {
+    const container = document.getElementById('game-container');
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    // 비정상적인 로드 지연 시 기본 최소 해상도 가드라인 작동
+    width = containerWidth > 100 ? containerWidth : 380;
+    height = containerHeight > 100 ? containerHeight : 570;
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    recreateWalls();
+}
+
+let ground, leftWall, rightWall;
+function recreateWalls() {
+    if (ground) Composite.remove(world, [ground, leftWall, rightWall]);
+    
+    // 화면 크기에 맞추어 충돌 반발 경계선 재구축 (Bodies.rectangular -> Bodies.rectangle 수정 완료)
+    ground = Bodies.rectangle(width / 2, height + 40, width + 100, 100, { 
+        isStatic: true, 
+        friction: 0.1 
+    });
+    leftWall = Bodies.rectangle(-45, height / 2, 100, height + 100, { 
+        isStatic: true, 
+        friction: 0.05 
+    });
+    rightWall = Bodies.rectangle(width + 45, height / 2, 100, height + 100, { 
+        isStatic: true, 
+        friction: 0.05 
+    });
+    
+    Composite.add(world, [ground, leftWall, rightWall]);
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+// ==========================================
+// 4. GAME STATE & PRESET PREVIEW
+// ==========================================
+let score = 0;
+let highScore = parseInt(localStorage.getItem('cosmic_high_score')) || 0;
+document.getElementById('high-score').textContent = highScore;
+
+let currentTierIndex = 0;
+let nextTierIndex = 0;
+let isGameOver = false;
+let gameStarted = false;
+let cheatSunCreated = false;
+
+let isHolding = false;
+let holdX = 0;
+let lastDropTime = 0;
+const DROP_COOLDOWN = 500; // 조작 딜레이 단축
+
+// 데드라인 선 높이
+const DEADLINE_Y = 110;
+let deadlineTriggeredTime = null;
+
+const nextCanvas = document.getElementById('next-canvas');
+const nextCtx = nextCanvas.getContext('2d');
+
+function updateScore(addScore) {
+    score += addScore;
+    document.getElementById('score').textContent = score;
+    if (score > highScore) {
+        highScore = score;
+        document.getElementById('high-score').textContent = highScore;
+        localStorage.setItem('cosmic_high_score', highScore);
+    }
+}
+
+function prepareNextPlanets() {
+    currentTierIndex = nextTierIndex;
+    nextTierIndex = Math.floor(Math.random() * 4);
+    
+    document.getElementById('next-name').textContent = PLANET_TIERS[nextTierIndex].name;
+    
+    nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+    nextCtx.save();
+    nextCtx.translate(18, 18);
+    drawPlanetVisual(nextCtx, 0, 0, 11, PLANET_TIERS[nextTierIndex], 0);
+    nextCtx.restore();
+}
+
+nextTierIndex = Math.floor(Math.random() * 4);
+prepareNextPlanets();
+
+// ==========================================
+// 5. RENDERING VISUALS (PLANET & GRAPHICS)
+// ==========================================
+let particles = [];
+
+function createMergeParticles(x, y, color) {
+    for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 2;
+        particles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            radius: Math.random() * 3 + 2,
+            color: color,
+            alpha: 1,
+            decay: Math.random() * 0.02 + 0.02
+        });
+    }
+}
+
+function drawPlanetVisual(c, x, y, r, tier, angle) {
+    if (!r) return;
+    c.save();
+    c.translate(x, y);
+    c.rotate(angle);
+
+    // 1. 후광 이펙트 (태양 전용)
+    if (tier.glow) {
+        const glowGrad = c.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.4);
+        glowGrad.addColorStop(0, 'rgba(232, 67, 21, 0.6)');
+        glowGrad.addColorStop(0.5, 'rgba(251, 192, 45, 0.3)');
+        glowGrad.addColorStop(1, 'rgba(251, 192, 45, 0)');
+        c.fillStyle = glowGrad;
+        c.beginPath();
+        c.arc(0, 0, r * 1.5, 0, Math.PI * 2);
+        c.fill();
+    }
+
+    // 2. 토성 고리 그리기
+    if (tier.ring) {
+        c.save();
+        c.scale(1.8, 0.4);
+        c.rotate(-0.1);
+        c.strokeStyle = "rgba(226, 191, 125, 0.45)";
+        c.lineWidth = 14;
+        c.beginPath();
+        c.arc(0, 0, r * 0.75, 0, Math.PI * 2);
+        c.stroke();
+        c.strokeStyle = "rgba(255, 235, 196, 0.75)";
+        c.lineWidth = 4;
+        c.beginPath();
+        c.arc(0, 0, r * 0.8, 0, Math.PI * 2);
+        c.stroke();
+        c.restore();
+    }
+
+    // 3. 베이스 구체 그라디언트
+    const baseGrad = c.createRadialGradient(-r*0.2, -r*0.2, r*0.1, 0, 0, r);
+    baseGrad.addColorStop(0, tier.stroke);
+    baseGrad.addColorStop(0.3, tier.color);
+    baseGrad.addColorStop(1, tier.coreColor);
+
+    c.fillStyle = baseGrad;
+    c.beginPath();
+    c.arc(0, 0, r, 0, Math.PI * 2);
+    c.fill();
+
+    // 4. 행성별 특징적 패턴 구현
+    c.lineWidth = 1.5;
+    if (tier.name === "세레스") {
+        c.fillStyle = "rgba(0,0,0,0.15)";
+        c.beginPath(); c.arc(-r*0.4, -r*0.1, r*0.2, 0, Math.PI*2); c.fill();
+        c.beginPath(); c.arc(r*0.3, r*0.3, r*0.15, 0, Math.PI*2); c.fill();
+    } 
+    else if (tier.name === "명왕성") {
+        c.fillStyle = "rgba(255,255,255,0.4)";
+        c.beginPath();
+        c.moveTo(0, r*0.3);
+        c.bezierCurveTo(-r*0.4, -r*0.1, -r*0.5, r*0.4, 0, r*0.7);
+        c.bezierCurveTo(r*0.5, r*0.4, r*0.4, -r*0.1, 0, r*0.3);
+        c.fill();
+    } 
+    else if (tier.name === "수성") {
+        c.strokeStyle = "rgba(0,0,0,0.2)";
+        c.beginPath(); c.arc(-r*0.2, r*0.2, r*0.3, 0, Math.PI*2); c.stroke();
+        c.beginPath(); c.arc(r*0.4, -r*0.3, r*0.2, 0, Math.PI*2); c.stroke();
+    } 
+    else if (tier.name === "화성") {
+        c.fillStyle = "rgba(255,255,255,0.7)";
+        c.beginPath(); c.arc(0, -r*0.9, r*0.2, 0, Math.PI, false); c.fill();
+        c.fillStyle = "rgba(0,0,0,0.15)";
+        c.beginPath();
+        c.ellipse(-r*0.3, r*0.1, r*0.3, r*0.15, Math.PI/6, 0, Math.PI*2);
+        c.fill();
+    } 
+    else if (tier.name === "금성") {
+        c.strokeStyle = "rgba(255,255,255,0.2)";
+        c.lineWidth = 3;
+        c.beginPath(); c.arc(0, -r*0.2, r*0.9, 0.2, Math.PI-0.2); c.stroke();
+        c.beginPath(); c.arc(0, r*0.4, r*0.8, 0.5, Math.PI-0.5); c.stroke();
+    } 
+    else if (tier.name === "지구") {
+        c.fillStyle = "rgba(76, 175, 80, 0.6)";
+        c.beginPath();
+        c.ellipse(-r*0.3, -r*0.2, r*0.4, r*0.3, 0.5, 0, Math.PI*2);
+        c.ellipse(r*0.3, r*0.3, r*0.3, r*0.4, -0.3, 0, Math.PI*2);
+        c.fill();
+        
+        c.strokeStyle = "rgba(255,255,255,0.5)";
+        c.lineWidth = 4;
+        c.beginPath();
+        c.arc(-r*0.1, -r*0.1, r*0.7, 0.3, Math.PI*0.8);
+        c.stroke();
+    } 
+    else if (tier.name === "해왕성") {
+        c.fillStyle = "rgba(10, 20, 60, 0.4)";
+        c.beginPath(); c.arc(r*0.3, r*0.1, r*0.25, 0, Math.PI*2); c.fill();
+        c.strokeStyle = "rgba(255,255,255,0.15)";
+        c.lineWidth = 2;
+        c.beginPath(); c.arc(0, 0, r*0.9, 0, Math.PI*2); c.stroke();
+    } 
+    else if (tier.name === "천왕성") {
+        c.strokeStyle = "rgba(255,255,255,0.2)";
+        c.lineWidth = 2;
+        c.beginPath();
+        c.ellipse(0, 0, r*0.2, r*0.95, 0, 0, Math.PI*2);
+        c.stroke();
+    } 
+    else if (tier.name === "토성") {
+        c.fillStyle = "rgba(255, 255, 255, 0.15)";
+        c.fillRect(-r, -r*0.3, r*2, r*0.15);
+        c.fillRect(-r, r*0.1, r*2, r*0.1);
+    } 
+    else if (tier.name === "목성") {
+        c.fillStyle = "rgba(110, 50, 20, 0.3)";
+        c.fillRect(-r, -r*0.4, r*2, r*0.25);
+        c.fillRect(-r, r*0.1, r*2, r*0.2);
+        c.fillStyle = "rgba(180, 40, 20, 0.85)";
+        c.beginPath();
+        c.ellipse(r*0.4, r*0.2, r*0.2, r*0.12, 0, 0, Math.PI*2);
+        c.fill();
+    } 
+    else if (tier.name === "태양") {
+        c.fillStyle = "rgba(255, 235, 59, 0.8)";
+        for (let i = 0; i < 5; i++) {
+            const pa = (i / 5) * Math.PI * 2;
+            c.beginPath();
+            c.arc(Math.cos(pa)*r*0.5, Math.sin(pa)*r*0.5, r*0.15, 0, Math.PI*2);
+            c.fill();
+        }
+    }
+
+    // 5. 토성 고리 앞부분 그리기
+    if (tier.ring) {
+        c.save();
+        c.scale(1.8, 0.4);
+        c.rotate(-0.1);
+        c.strokeStyle = "rgba(255, 235, 196, 0.75)";
+        c.lineWidth = 4;
+        c.beginPath();
+        c.arc(0, 0, r * 0.8, 0, Math.PI);
+        c.stroke();
+        c.restore();
+    }
+
+    // 6. 광택 효과 및 외곽선 테두리
+    const shine = c.createLinearGradient(-r, -r, r, r);
+    shine.addColorStop(0, "rgba(255,255,255,0.2)");
+    shine.addColorStop(0.5, "rgba(255,255,255,0)");
+    shine.addColorStop(1, "rgba(0,0,0,0.4)");
+    c.fillStyle = shine;
+    c.beginPath(); c.arc(0, 0, r, 0, Math.PI*2); c.fill();
+
+    c.strokeStyle = "rgba(255,255,255,0.15)";
+    c.lineWidth = 1;
+    c.beginPath(); c.arc(0, 0, r, 0, Math.PI*2); c.stroke();
+
+    c.restore();
+}
+
+// 배경에 고정된 별자리 그리기 데이터 준비
+const starBg = [];
+for (let i = 0; i < 60; i++) {
+    starBg.push({
+        x: Math.random(),
+        y: Math.random(),
+        size: Math.random() * 1.5 + 0.5,
+        twinkleRate: Math.random() * 0.02 + 0.005,
+        twinkleSeed: Math.random() * Math.PI
+    });
+}
+
+// ==========================================
+// 6. MAIN RENDER LOOP (CANVAS RENDERER)
+// ==========================================
+let mergesToProcess = [];
+
+function draw() {
+    if (!width || !height) return;
+
+    // 캔버스 비우기
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. 우주 그라데이션 배경 그리기
+    const bgGrad = ctx.createRadialGradient(width/2, height*0.7, 10, width/2, height/2, width*1.2);
+    bgGrad.addColorStop(0, '#100c2a');
+    bgGrad.addColorStop(0.6, '#080516');
+    bgGrad.addColorStop(1, '#020108');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. 반짝이는 성단
+    starBg.forEach(star => {
+        const x = star.x * width;
+        const y = star.y * height;
+        star.twinkleSeed += star.twinkleRate;
+        const alpha = 0.3 + Math.abs(Math.sin(star.twinkleSeed)) * 0.7;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 3. 한계 경계선 (데드라인) 그리기
+    ctx.save();
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(0, DEADLINE_Y);
+    ctx.lineTo(width, DEADLINE_Y);
+    ctx.stroke();
+    ctx.restore();
+
+    // 붕괴 타이머 작동 시 붉은 점멸 연출
+    if (deadlineTriggeredTime !== null) {
+        const timeElapsed = Date.now() - deadlineTriggeredTime;
+        const pulse = Math.abs(Math.sin(timeElapsed / 150));
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.1 + pulse * 0.15})`;
+        ctx.fillRect(0, 0, width, DEADLINE_Y);
+
+        ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
+        ctx.font = "bold 11px Orbitron";
+        ctx.textAlign = "center";
+        ctx.fillText("COLLAPSE WARNING", width / 2, DEADLINE_Y - 12);
+    }
+
+    // 4. 떨어뜨릴 조준 가이드라인과 공전 대기 궤도 천체 그리기
+    if (gameStarted && !isGameOver) {
+        const currentRadius = PLANET_TIERS[currentTierIndex].radius;
+        const limitLeft = currentRadius + 8;
+        const limitRight = width - currentRadius - 8;
+        const currentX = Math.max(limitLeft, Math.min(limitRight, holdX));
+
+        drawPlanetVisual(ctx, currentX, 55, currentRadius, PLANET_TIERS[currentTierIndex], 0);
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(147, 51, 234, 0.25)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(currentX, 80);
+        ctx.lineTo(currentX, height);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 5. 물리 엔진 세계 내 모든 활성 천체 렌더링
+    const bodies = Composite.allBodies(world);
+    let warningActiveThisFrame = false;
+
+    bodies.forEach(body => {
+        if (body.isPlanet) {
+            // 원형 천체의 반지름 정보를 바디에서 유동적으로 추출하여 매핑
+            const r = body.radius || body.circleRadius;
+            drawPlanetVisual(ctx, body.position.x, body.position.y, r, PLANET_TIERS[body.tier], body.angle);
+            
+            // 데드라인 오버 체크
+            if (body.position.y - r < DEADLINE_Y) {
+                // 천체가 하늘 위 스폰 시점에 있는 것을 제외한 실질적 침범 감지
+                if (body.position.y > 100 + r) {
+                    warningActiveThisFrame = true;
+                }
+            }
+        }
+    });
+
+    // 경보 유지 시간 누적 연산
+    if (warningActiveThisFrame && !isGameOver && gameStarted) {
+        if (deadlineTriggeredTime === null) {
+            deadlineTriggeredTime = Date.now();
+        } else if (Date.now() - deadlineTriggeredTime > 3000) {
+            triggerGameOver();
+        }
+    } else {
+        deadlineTriggeredTime = null;
+    }
+
+    // 6. 파티클 이펙트
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0) {
+            particles.splice(i, 1);
+            continue;
+        }
+
+        ctx.fillStyle = p.color;
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * p.alpha, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    requestAnimationFrame(draw);
+}
+
+// ==========================================
+// 7. PHYSICS TIMELINE MERGE PROCESSOR
+// ==========================================
+// 프레임 워크 충돌 감지 연쇄 동시 업데이트
+Events.on(engine, 'afterUpdate', () => {
+    if (mergesToProcess.length > 0) {
+        mergesToProcess.forEach(merge => {
+            const { bodyA, bodyB, tier } = merge;
+            
+            if (Composite.allBodies(world).includes(bodyA) && Composite.allBodies(world).includes(bodyB)) {
+                Composite.remove(world, bodyA);
+                Composite.remove(world, bodyB);
+
+                const midX = (bodyA.position.x + bodyB.position.x) / 2;
+                const midY = (bodyA.position.y + bodyB.position.y) / 2;
+                const nextTier = tier + 1;
+
+                updateScore(PLANET_TIERS[nextTier].score);
+                audio.playMerge(nextTier);
+                createMergeParticles(midX, midY, PLANET_TIERS[tier].color);
+
+                if (nextTier === PLANET_TIERS.length - 1 && !cheatSunCreated) {
+                    cheatSunCreated = true;
+                    showClearModal();
+                }
+
+                const mergedPlanet = createPlanet(midX, midY, nextTier);
+                Composite.add(world, mergedPlanet);
+            }
+        });
+        mergesToProcess = [];
+    }
+});
+
+function createPlanet(x, y, tier) {
+    const data = PLANET_TIERS[tier];
+    const planet = Bodies.circle(x, y, data.radius, {
+        restitution: 0.25,
+        friction: 0.1,
+        density: 0.001 * (tier + 1),
+        render: { visible: false }
+    });
+
+    planet.tier = tier;
+    planet.radius = data.radius; // 그리기 안전 버퍼용 꼬리표 속성 추가
+    planet.isPlanet = true;
+    return planet;
+}
+
+Events.on(engine, 'collisionStart', (event) => {
+    const pairs = event.pairs;
+    for (let i = 0; i < pairs.length; i++) {
+        const pair = pairs[i];
+        const bodyA = pair.bodyA;
+        const bodyB = pair.bodyB;
+
+        if (bodyA.isPlanet && bodyB.isPlanet && bodyA.tier === bodyB.tier && !bodyA.toDelete && !bodyB.toDelete) {
+            if (bodyA.tier === PLANET_TIERS.length - 1) {
+                // 태양 결합 시 소멸
+                bodyA.toDelete = true;
+                bodyB.toDelete = true;
+                mergesToProcess.push({ bodyA, bodyB, tier: bodyA.tier });
+                continue;
+            }
+
+            bodyA.toDelete = true;
+            bodyB.toDelete = true;
+            mergesToProcess.push({ bodyA, bodyB, tier: bodyA.tier });
+        }
+    }
+});
+
+// ==========================================
+// 8. CONTROLLER & ACTION REGISTER (이벤트 캔버스 이전)
+// ==========================================
+// 조준선 초기 위치를 중앙으로 배치
+holdX = 190;
+
+function dropCurrentPlanet() {
+    if (isGameOver || !gameStarted) return;
+    
+    const now = Date.now();
+    if (now - lastDropTime < DROP_COOLDOWN) return;
+
+    const currentRadius = PLANET_TIERS[currentTierIndex].radius;
+    const limitLeft = currentRadius + 8;
+    const limitRight = width - currentRadius - 8;
+    const spawnX = Math.max(limitLeft, Math.min(limitRight, holdX));
+
+    const planet = createPlanet(spawnX, 85, currentTierIndex);
+    Composite.add(world, planet);
+    
+    audio.playDrop();
+    lastDropTime = now;
+
+    const guide = document.getElementById('tap-guide');
+    if (guide) guide.style.opacity = '0';
+
+    prepareNextPlanets();
+}
+
+// 캔버스 자체로 마우스 조작 바인딩 변경하여 이벤트 가로챔 방지
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // 터치 오차 방지를 위한 정교한 비율 계산 추가
+    holdX = ((e.clientX - rect.left) / rect.width) * width;
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    holdX = ((e.clientX - rect.left) / rect.width) * width;
+    isHolding = true;
+});
+
+// 가벼운 한 번 클릭에 대해서도 천체가 즉각 낙하하도록 개선
+canvas.addEventListener('mouseup', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    holdX = ((e.clientX - rect.left) / rect.width) * width;
+    dropCurrentPlanet();
+    isHolding = false;
+});
+
+// 터치 스크린 안정화 처리
+canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    holdX = ((e.touches[0].clientX - rect.left) / rect.width) * width;
+    isHolding = true;
+});
+
+canvas.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    holdX = ((e.touches[0].clientX - rect.left) / rect.width) * width;
+});
+
+canvas.addEventListener('touchend', (e) => {
+    dropCurrentPlanet();
+    isHolding = false;
+});
+
+// ==========================================
+// 9. MODALS & GAME FLOW MANAGEMENT
+// ==========================================
+const startModal = document.getElementById('start-modal');
+const gameoverModal = document.getElementById('gameover-modal');
+const clearModal = document.getElementById('clear-modal');
+
+document.getElementById('play-btn').addEventListener('click', () => {
+    audio.init();
+    startModal.classList.add('hidden');
+    gameStarted = true;
+    resizeCanvas();
+    draw();
+});
+
+document.getElementById('guide-btn').addEventListener('click', () => {
+    startModal.classList.remove('hidden');
+});
+
+function restartGame() {
+    const planetBodies = Composite.allBodies(world).filter(b => b.isPlanet);
+    planetBodies.forEach(b => Composite.remove(world, b));
+    
+    score = 0;
+    document.getElementById('score').textContent = "0";
+    isGameOver = false;
+    cheatSunCreated = false;
+    deadlineTriggeredTime = null;
+    
+    prepareNextPlanets();
+    gameoverModal.classList.add('hidden');
+    clearModal.classList.add('hidden');
+}
+
+document.getElementById('restart-btn').addEventListener('click', restartGame);
+document.getElementById('clear-restart-btn').addEventListener('click', restartGame);
+document.getElementById('continue-btn').addEventListener('click', () => {
+    clearModal.classList.add('hidden');
+});
+
+function triggerGameOver() {
+    isGameOver = true;
+    audio.playGameOver();
+    document.getElementById('final-score').textContent = score;
+    gameoverModal.classList.remove('hidden');
+}
+
+function showClearModal() {
+    document.getElementById('clear-score').textContent = score;
+    clearModal.classList.remove('hidden');
+}
+
+window.onload = () => {
+    resizeCanvas();
+};
+</script>
+
+</body>
+</html>
